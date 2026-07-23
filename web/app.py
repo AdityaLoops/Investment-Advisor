@@ -19,6 +19,10 @@ risk_return_df = pd.read_csv(CSV_PATH)
 
 
 @app.route("/", methods=["GET", "POST"])
+# This is called a decorator.
+# It tells Flask -> "Whenever someone visits /, run the function below."
+# "/" ->  Means homepage.
+
 def home():
 
     recommendations = None
