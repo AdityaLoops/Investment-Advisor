@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+venv/
+.env
+Data/external/mutual_fund_nav_history.parquet
