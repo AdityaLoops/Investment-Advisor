@@ -12,3 +12,4 @@ requests==2.34.2
 yfinance==1.5.1
 mftool==3.3
 pyarrow==25.0.0
+gunicorn
