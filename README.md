@@ -3,7 +3,12 @@
 **Project for:** Anand Rathi Internship
 **Goal:** Given a principal amount (₹X), an investment horizon (Y years), and a risk tolerance, recommend the fund expected to give the best risk-adjusted outcome — and project what the investment will grow to.
 
+**Live demo:** https://investment-advisor-d89n.onrender.com/
+*(Free-tier hosting — the app sleeps after 15 minutes of inactivity; the first request after a while can take 30–60 seconds to wake up.)*
+
 This is **not** a stock/price predictor. It does not attempt to forecast future NAV values. It uses historical fund performance to answer a practical advisory question: *"Given my money, my timeline, and my risk appetite, which of these funds should I choose?"*
+
+> **A note on "expected" figures:** all CAGR/return figures in this tool are computed from real historical NAV data. They describe what actually happened in the past, not a forecast of the future. Past performance is not indicative of future returns — this is true of any tool like this, not a caveat specific to this project.
 
 ---
 
@@ -12,20 +17,40 @@ This is **not** a stock/price predictor. It does not attempt to forecast future 
 ```
 investment_advisor_project/
 ├── Data/
-│   ├── raw/           # Raw NAV history per fund (from Phase 1)
-│   └── processed/     # Derived datasets (rolling CAGR, risk tables)
+│   ├── raw/            # Original 6-fund NAV history (Phase 1, via mftool)
+│   └── external/        # 140/138-fund dataset + all derived checkpoints
+│       ├── final_selection_140funds.csv
+│       ├── nav_selected_140funds.csv
+│       ├── results_df_138funds.csv
+│       ├── results_df_138funds_with_predictions.csv
+│       └── risk_return_df_138funds_filtered_min7yr.csv   # <- final dataset the web app runs on
 ├── Notebooks/
 │   ├── 01_data_collection.ipynb
 │   ├── 02_baseline_calculator.ipynb
-│   ├── 03_eda_feature_engineering.ipynb
-│   └── 04_modeling.ipynb
-├── Rates/
-└── src/
-    └── calculators.py  # Reusable functions: compound_interest(), recommend_best(),
-                         # recommend_fund(), advise_investment()
+│   ├── 03_eda_feature_engineering.ipynb      # Phase 3 (6-fund EDA)
+│   ├── 04_modeling_risk_scoring.ipynb        # Phase 4/5 (6-fund modeling)
+│   ├── 05_expanded_dataset_pipeline.ipynb    # Phase 6 (138-fund pipeline, self-contained)
+│   ├── 06_recommendations.ipynb              # Loads final checkpoint, runs recommendations
+│   └── archive/
+│       └── 03_raw_working_notebook_pre_cleanup.ipynb   # Full unedited working history —
+│                                                         # kept for transparency into the actual
+│                                                         # debugging process (bugs found, dead
+│                                                         # ends, live methodology decisions)
+├── src/
+│   └── calculators.py     # compound_interest(), recommend_best(), recommend_fund(),
+│                           # advise_investment(), advise_investment_web()
+└── web/
+    ├── app.py             # Flask app
+    ├── requirements.txt
+    ├── templates/
+    │   └── index.html
+    └── static/
+        └── style.css
 ```
 
-## Funds Covered
+---
+
+## Original 6 Funds (Phases 1–5)
 
 | Fund | Code | Category |
 |---|---|---|
@@ -36,11 +61,13 @@ investment_advisor_project/
 | ICICI Large Cap | 120586 | Equity |
 | ICICI Corporate Bond | 120692 | Debt |
 
+Phases 1–5 (below) were built and validated on these 6 hand-picked funds before the project scaled up in Phase 6 to a genuinely diverse 138-fund universe.
+
 ---
 
 ## Phase 1: Data Collection
 
-Pulled historical NAV data for all 6 funds using `mftool`, covering **2013 to July 2026** (~3,266–3,338 rows per fund). Saved as individual CSVs in `Data/raw/`. This is the single source of truth all later phases build on — no external or synthetic data was introduced.
+Pulled historical NAV data for all 6 funds using `mftool`, covering **2013 to July 2026** (~3,266–3,338 rows per fund). Saved as individual CSVs in `Data/raw/`. This is the single source of truth all later phases build on — no external or synthetic data was introduced at this stage.
 
 ---
 
@@ -69,94 +96,108 @@ Moved from guessed rates to **real historical returns**:
 - Switching from guessed to real rates flipped the "best fund" from Phase 2's `sbi_large_cap` to `icici_large_cap`
 - Equity funds show dramatically reduced worst-case risk at longer holding periods (e.g. `hdfc_large_cap`: -37% worst case at 1 year, never negative at 7+ years)
 - `icici_large_cap` was consistently a top/near-top performer with comparatively low equity volatility
-- A "dip then recovery" pattern appeared in mean CAGR across window lengths — noted but not fully explained at the time
 - Corporate bond funds stayed flat and low-risk regardless of horizon
-
-**Known limitations:** 13.5-year dataset does not include a major market crash within the data window in a way that stresses all horizons equally; small fund sample (6 funds, 2 fund houses' worth of categories).
 
 ---
 
-## Phase 4: Modeling
+## Phase 4: Modeling (6 Funds)
 
 ### 4a — Baseline: Linear Regression
 
 Restructured data into `long_df` (117,804 rows — every individual rolling-window CAGR as its own row), one-hot encoded by fund, split **80/20 by `start_date`** (time-based, not random — random shuffling would leak near-duplicate overlapping windows between train and test).
 
-**Result:** MAE 0.0567, R² 0.174.
-
-**Why it underperformed:** the `window_years` coefficient came out near-zero (-0.00077), meaning the model learned that holding period barely affects predicted *mean* CAGR. This contradicted the risk pattern found in Phase 3, and traces back to a real limitation — Linear Regression cannot represent **interaction effects** (e.g. "equity is worse short-term, better long-term" behaving differently per fund) without those interactions being manually engineered in.
-
-**Practical consequence:** the model would recommend nearly the same 1–2 funds regardless of the number of years entered — defeating the purpose of a horizon-sensitive advisor tool.
+**Result:** MAE 0.0567, R² 0.174. The `window_years` coefficient came out near-zero, meaning the model learned that holding period barely affects predicted *mean* CAGR — an informative negative result, not a failure.
 
 ### 4b — Random Forest Regressor
 
-Same features, same split, `RandomForestRegressor(n_estimators=100, random_state=42)`.
-
-**Result:** MAE 0.0589, R² 0.164 — essentially the same as, or marginally worse than, Linear Regression.
-
-**Why added flexibility didn't help:** with only `window_years` (10 values) × `fund` (6 values), there are just **60 unique feature combinations** underlying all 117,804 rows. Both models converge toward learning the per-bucket average CAGR; there wasn't meaningfully more signal in the *mean* return for a non-linear model to extract. This result was documented as an informative negative finding, not a failure: it confirmed the bottleneck was the feature set and the target (mean CAGR), not model choice.
+Same features, same split. **Result:** MAE 0.0589, R² 0.164 — essentially unchanged from Linear Regression. With only 60 unique `(window_years, fund)` combinations underlying 117,804 rows, both models converged toward the same per-bucket average — confirming the bottleneck was the feature set and target (mean CAGR), not model choice.
 
 ### 4c — Risk-Adjusted Scoring (the approach that worked)
 
-**Reframe:** rather than predicting mean CAGR (which barely varies with horizon), use the fact that **worst-case CAGR varies dramatically with horizon** — equity funds' downside risk shrinks fast as `window_years` increases, while bond funds' risk stays flat throughout. This is real signal already present in the Phase 3 data, requiring no new data collection.
-
-Built `risk_return_df` (60 rows: one per fund × window_years combination) with `mean` and `min` CAGR per group, then a risk-adjusted score:
+**Reframe:** worst-case CAGR varies dramatically with horizon — equity funds' downside risk shrinks fast as `window_years` increases, while bond funds' risk stays flat. Built `risk_return_df` with a risk-adjusted score:
 
 ```
-score = mean_cagr - (penalty_weight × max(-min_cagr, 0))
+score = mean_cagr - (penalty × max(-min_cagr, 0))
 ```
 
-`penalty_weight` represents **risk tolerance**: higher values penalize downside risk more heavily (conservative), lower values favor raw expected return (aggressive).
-
-**Validation:** tested `penalty_weight` from 0.2 to 2.0 — the recommended fund shifts predictably and monotonically from equity to bonds as risk-aversion increases, and the horizon at which equity "takes over" extends further out at higher penalty weights:
-
-| penalty_weight | Bonds win at years... | Equity takes over at year... |
-|---|---|---|
-| 0.2 | none | 1 |
-| 0.5 | 1 | 2 |
-| 1.0 | 1, 2 | 3 |
-| 2.0 | 1, 2, 3 | 4 |
-
-This resolved the core concern raised during development: that the tool's recommendation would stagnate regardless of input. It now differentiates meaningfully across **two real user-facing inputs** — investment horizon and risk tolerance — grounded in actual historical risk data.
+`penalty` represents risk tolerance (0–2): higher values penalize downside risk more heavily. Validated that different penalty values produce genuinely different, sensible recommendations — a monotonic equity→bonds crossover as risk-aversion increases.
 
 ### 4d — End-to-End Pipeline
 
-`advise_investment(risk_return_df, principal, years, penalty)` in `src/calculators.py` chains the full pipeline:
-
-1. `recommend_fund()` — finds the best fund and its historical mean CAGR for the given horizon and risk tolerance (includes input validation: rejects `penalty` outside `[0, 2]` with a clear message rather than crashing)
-2. `compound_interest()` — projects the final ₹ value using that fund's rate (reuses the Phase 2 function directly)
-
-**Example:**
-```python
-advise_investment(risk_return_df, 50000, 5, 0.5)
-```
-→ Recommends `icici_large_cap` (expected CAGR 15.46%, worst-case ~0%), projecting ₹50,000 to ≈₹1,02,603.10 over 5 years.
-
-This closes the loop from raw data (Phase 1) to a working, evidence-based recommendation with a concrete ₹ projection (Phase 4) — the original project goal, fully implemented.
+`advise_investment(risk_return_df, principal, years, penalty)` chains `recommend_fund()` → `compound_interest()`, closing the loop from raw data to a working, evidence-based ₹ projection.
 
 ---
 
-## Phase 5: ML-Driven Risk Estimation — Quantile Regression
+## Phase 5: ML-Driven Risk Estimation — Quantile Regression (6 Funds)
 
-**Motivation:** Phase 4c's `recommend_fund()` used a hand-computed historical minimum (`min_cagr`) as its risk measure — accurate, but entirely rule-based, with no trained model in the recommendation path itself. This phase replaces that hand-computed number with a genuinely trained ML model.
+**Motivation:** replace the hand-computed historical minimum (`min_cagr`) risk measure with a genuinely trained model.
 
-**Why not just regress on mean CAGR again:** Phase 4a/4b already showed mean CAGR barely varies with `window_years`, which is why those models underperformed. The real learnable signal is in *risk*, not average return — risk shrinks with holding period in a way that varies meaningfully by fund, exactly what Phase 3 and Phase 4c's `min_cagr` table already demonstrated.
+**Approach:** `GradientBoostingRegressor(loss='quantile', alpha=0.05)` trained on row-level `long_df`, predicting the 5th percentile of the CAGR distribution as `predicted_min_cagr`.
 
-**Approach:** trained `GradientBoostingRegressor(loss='quantile', alpha=...)` on row-level `long_df` (same features as before). Quantile regression predicts a specific low percentile of the CAGR distribution — e.g. "the value this fund/horizon falls below only 5% of the time" — a statistically robust analogue to a historical worst-case.
+**Alpha tuning:** tested 0.1 / 0.05 / 0.01 — **0.05 chosen** as the best balance between tracking the historical minimum and staying smooth/monotonic across window lengths.
 
-**Alpha tuning:**
+**Validation:** historical and ML-based risk measures **always agreed on which fund to recommend**, differing mainly in severity, not direction — evidence the model learned something real rather than noise.
 
-| alpha | Behavior |
-|---|---|
-| 0.1 | Reasonable, but noticeably less pessimistic than actual historical `min` at short horizons |
-| **0.05** | **Closer to historical `min`, while staying smooth and monotonic — best balance, used as final model** |
-| 0.01 | Closer still on average, but noisy — non-monotonic across adjacent `window_years`, and at least one case predicting worse than the fund's actual all-time worst case (overfitting to a thin, correlated sample) |
+`recommend_fund()` / `advise_investment()` extended with a `risk_column` parameter (`'min'` or `'predicted_min_cagr'`), so either risk measure can drive the scoring formula interchangeably.
 
-**Integration:** `recommend_fund()` and `advise_investment()` extended with a `risk_column` parameter (default `'min'`, backward compatible), so either the historical risk measure or the ML-predicted one (`predicted_min_cagr`, in `ml_risk_df`) can be used interchangeably in the same scoring formula.
+---
 
-**Validation:** across multiple (`window_years`, `penalty`) test cases, the historical and ML-based risk measures **always agreed on which fund to recommend**. They differed in severity — the historical minimum, being a single extreme outlier, applies a harsher penalty at short horizons than the smoother ML estimate. E.g. at `window_years=3`, `penalty=1.0`: same recommended fund (`icici_large_cap`), but score 0.106 (historical) vs. 0.158 (ML) — because the ML model's 5th-percentile estimate wasn't negative while the single worst historical window was.
+## Phase 6: Scaling to 138 Funds
 
-**Conclusion:** the ML model validates the original hand-built approach rather than contradicting it, while offering a more statistically grounded, less outlier-sensitive risk estimate. The recommendation engine now has a genuinely trained model in the loop, with tuned hyperparameters and cross-validated behavior against the original rule-based approach — not just descriptive statistics.
+### Motivation
+
+Everything above covered only 6 hand-picked funds. This phase scales the same recommendation engine to a much larger, genuinely diverse fund universe — while deliberately avoiding cherry-picking funds to produce "interesting" results.
+
+### Data source
+
+Switched to a daily-updated, AMFI-derived dataset (GitHub: `InertExpert2911/Mutual_Fund_Data`). Validated against the original mftool data before trusting it — spot-checked `icici_large_cap`'s NAV values on shared dates and found an exact match.
+
+### Fund selection
+
+- Filtered scheme metadata to Direct + Growth plans only (via `Scheme_NAV_Name` string matching), excluding dividend/IDCW variants
+- Mapped 73 raw, inconsistently-named AMFI categories down to 7 target categories: large-cap, mid-cap, small-cap, corporate bond, short-duration debt, hybrid, index
+- Sampled ~20 funds per category for genuine diversity — not selected to produce a particular outcome
+
+### Category-based encoding (avoiding sparsity)
+
+One-hot encoding 138 individual funds (as done at 6-fund scale) would create ~138 sparse feature columns with too few supporting rows each. Instead, the ML model encodes `Scheme_Category` (7 columns) as its feature, while final recommendation scoring still uses each fund's own real historical mean/min — so recommendations stay fund-specific even though the model only sees category-level information.
+
+**Known limitation:** because the quantile model has no fund-level feature, `predicted_min_cagr` gives an *identical* value to every fund in the same category at the same `window_years`. Historical `min_cagr` remains the fund-specific risk measure and is the more reliable choice for differentiating between funds in the same category. A possible future improvement: add each fund's own historical `mean_cagr` as a single numeric feature (not one-hot) to differentiate within a category without reintroducing sparsity.
+
+### Data-quality bugs found and fixed
+
+1. **Two funds (Scheme_Code 148265, 148313) had `NAV = 0.0` for every single row** — no salvageable data. Dropped entirely, reducing the working set from 140 selected funds to 138.
+2. **Invesco India Short Duration Fund (Scheme_Code 120560) had a corrupted NAV value on 2013-04-22** that inflated its scale by roughly 100x from that date onward (likely a decimal/unit error at the data source). This produced a fabricated ~257% single-year CAGR that surfaced during recommendation testing. Traced to the exact date via day-over-day percent-change analysis; fixed by dropping the pre-2013-04-22 segment and recomputing CAGR/risk figures on the corrected, internally-consistent data.
+
+### Short-history bias — found and fixed
+
+While testing recommendations, some 5-year projections looked implausibly high (~30%+ CAGR). Investigation found: **46% of the 138 funds (63/138) have NAV history starting only after 2018**, meaning their rolling-window CAGR figures are computed entirely within the 2019–2024 period — an unusually strong stretch for Indian equities (COVID recovery + broader bull run). This inflated both `mean_cagr` and `min_cagr` for these funds relative to what a full market cycle would show.
+
+**Fix:** added a filter (`starts_before_2018`) requiring a fund's NAV history to reach back before 2018 before it's eligible for recommendation. This is a data-availability gate, not a statistical adjustment — it removes funds that structurally cannot have a trustworthy multi-year track record, rather than shrinking numbers for funds that remain in the pool. Verified the fix: after filtering, top recommendations still showed strong (~20–25% CAGR) but now genuinely multi-cycle-verified results, confirmed by inspecting individual funds' rolling-CAGR history across a full 2013–2021 span (dips, recoveries, and a real range — not an artifact of a narrow bull-run sample).
+
+### Range-based output (instead of a single number)
+
+Originally, `advise_investment()` projected only one value, based on `mean_cagr` — which reads like a confident promise rather than a historical summary. Updated to show three figures per recommended fund:
+
+- **Balanced estimate** — average of the best-case and worst-case *projected rupee amounts* (not CAGRs, since CAGR compounding is exponential — averaging final amounts is the correct way to blend two compounded outcomes)
+- **Best case** — projected value using historical `mean` CAGR
+- **Worst case** — projected value using the selected risk measure (`min` or `predicted_min_cagr`)
+
+### Known limitation: risk penalty has diminishing effect at longer horizons
+
+In the filtered (post-2018-history) dataset, most funds' worst-case (`min`) CAGR turns positive by mid-length windows — consistent with the core Phase 3 finding that downside risk shrinks with holding period. This means the risk penalty slider has less to act on at `window_years=10` than at `window_years=1`, since there's less negative downside left to penalize at longer horizons. Not a bug — a restatement of the project's own core finding showing up again in the recommendation layer — but worth knowing when interpreting long-horizon results.
+
+---
+
+## Web Application
+
+A Flask web app (`web/`) wraps `advise_investment_web()` for interactive use — form inputs for principal, horizon, risk penalty, risk measure (historical vs. AI-predicted), and number of recommendations.
+
+**Live at:** https://investment-advisor-d89n.onrender.com/
+
+Deployed on Render's free tier. The app loads `risk_return_df_138funds_filtered_min7yr.csv` — the final, filtered, fully-validated dataset — once at startup.
+
+**Labeling note:** the UI distinguishes between historically-derived figures (real past averages/worst-cases — no ML involved) and the genuinely AI-predicted figure (`predicted_min_cagr`, from the quantile regression model), since conflating the two would misrepresent which numbers are actually model output versus plain arithmetic on historical data.
 
 ---
 
@@ -166,25 +207,29 @@ This closes the loop from raw data (Phase 1) to a working, evidence-based recomm
 |---|---|
 | `compound_interest(p, r, t)` | Projects final value using compound interest |
 | `recommend_best(...)` | Phase 2 baseline recommender (static rates) |
-| `recommend_fund(risk_return_df, years, penalty, risk_column='min')` | Risk-adjusted fund recommendation; works with either historical (`min`) or ML-predicted (`predicted_min_cagr`) risk measures |
-| `advise_investment(risk_return_df, principal, years, penalty, risk_column='min')` | Full pipeline: recommendation → ₹ projection, same risk_column flexibility |
+| `recommend_fund(risk_return_df, years, penalty, risk_column='min', n=1)` | Risk-adjusted fund recommendation; supports historical (`min`) or ML-predicted (`predicted_min_cagr`) risk, and top-N results |
+| `advise_investment(risk_return_df, principal, years, penalty, risk_column='min', n=1)` | Full pipeline: recommendation → balanced/best-case/worst-case ₹ projections (printed) |
+| `advise_investment_web(risk_return_df, principal, years, penalty, risk_column='min', n=1)` | Same as above, returned as structured data for the Flask frontend |
 
 ---
 
-## Known Limitations
+## Known Limitations (Full List)
 
-- **13.5-year dataset**: does not include a market crash stressing all horizons equally; longer-window (7–10yr) CAGR figures are drawn from fewer independent historical periods than shorter windows, since windows overlap heavily
-- **Small fund sample**: 6 funds across 3 categories (equity, hybrid, debt) — not representative of the full fund universe
-- **Dummy variable trap** in the Phase 4a/4b encoding (all 6 fund columns kept, none dropped as baseline) — doesn't affect the risk-adjusted approach, but noted for any future regression work
-- **Overlapping rolling windows**: adjacent windows share most of their underlying dates, so the 117,804 "rows" represent far fewer truly independent scenarios (~60 unique fund/horizon buckets, each estimated from a heavily autocorrelated sample) — this was the main reason the regression approach (4a/4b) struggled, and why the split was done by time rather than randomly
-- **No purge gap at the train/test boundary**: windows immediately adjacent to the split cutoff date can still leak similar information across train/test, even with a time-based split. Deferred as a future refinement rather than blocking initial modeling
+- **`predicted_min_cagr` is category-level, not fund-level** — every fund in the same category at the same `window_years` receives an identical ML-predicted risk value. Use historical `min` for fund-specific risk differentiation.
+- **Risk penalty has diminishing effect at longer horizons** in the filtered 138-fund dataset, since most funds' worst-case CAGR turns positive by mid-length windows.
+- **Short-history funds are excluded from recommendations** (any fund whose NAV history starts after 2018) — this shrinks the effective candidate pool but was necessary to avoid systematically inflated figures for newer funds.
+- **13.5-year original dataset (6 funds)** does not include a market crash stressing all horizons equally; longer-window (7–10yr) CAGR figures are drawn from fewer independent historical periods than shorter windows, since windows overlap heavily.
+- **Overlapping rolling windows**: adjacent windows share most of their underlying dates, so row counts overstate the number of truly independent scenarios — this was the main reason the Phase 4a/4b regression approach struggled, and why train/test splits are done by time, not randomly.
+- **No purge gap at the train/test boundary** — windows immediately adjacent to the split cutoff date can still share information across train/test, even with a time-based split. Deferred as a future refinement.
+- **All figures are historical, not predictive** — "expected"/"balanced"/"best-case" labels describe what a fund's real past rolling-window performance looked like, not a forecast. This is stated explicitly in the app UI and should be treated as a hard limitation of any tool built this way, not specific to this project.
+- **Free-tier hosting** — the live demo sleeps after 15 minutes of inactivity; first request afterward takes 30–60 seconds.
 
 ---
 
-## Future Extensions (Phase 2 of the project)
+## Future Extensions
 
-- **Market-conditions feature**: incorporate a trailing market-return indicator (e.g. average return across all 6 funds in the N months prior to a window's `start_date`) computed from existing NAV data — no new data collection required
-- **More funds / more data**: expand beyond 6 funds and/or pull a longer NAV history if available, to reduce the "small independent sample" limitation and better represent market downturns
-- **Natural-language query input**: let a user type something like "I have ₹50,000 for 5 years, low risk" and have the tool parse `principal`, `years`, and risk tolerance automatically. Lightweight option: regex-based number/keyword extraction. Stretch goal: full NLP parsing
-- **Purge gap in the train/test split**: add a buffer around the time-based cutoff to fully eliminate boundary leakage between overlapping windows, once there's enough data to afford the loss
-- **Risk-tolerance UI**: expose `penalty_weight` as a simple user-facing choice (e.g. Conservative / Moderate / Aggressive → mapped to weight values) rather than a raw numeric input
+- **Fund-level feature in the quantile model** — add each fund's own historical `mean_cagr` as a numeric feature to differentiate `predicted_min_cagr` within a category, without reintroducing per-fund sparsity
+- **Market-conditions feature** — trailing market-return indicator, computed from existing NAV data, no new collection required (explored in depth, deferred: likely shifts the equity/bond boundary more than it changes which specific equity fund wins)
+- **Naive-average baseline in the output** — surface the `penalty=0` (pure historical average, no risk adjustment) pick alongside the risk-adjusted recommendation, for direct comparison
+- **Purge gap in the train/test split** — eliminate residual boundary leakage between overlapping windows once there's enough data to afford the loss
+- **Benchmark comparison in the UI** — show a recommended fund's historical CAGR next to a reference point (e.g. "broad equity mutual funds have historically averaged 12–15% CAGR") so users can immediately see when a pick is an exceptional historical performer rather than a typical one
