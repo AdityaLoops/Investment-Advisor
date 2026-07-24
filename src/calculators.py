@@ -29,7 +29,7 @@ def recommend_fund(risk_return_df, years, penalty, risk_column='min', n=1):
         print(f"      Worst Case Cagr return ({risk_column})={row[risk_column]:.4f}")
         print(f"      Score= {row['score']:.4f}\n")
 
-    return top_results[['fund', 'mean',risk_column, 'score']].reset_index(drop=True)
+    return top_results[['fund', 'mean', 'score', risk_column, 'sentiment_score']].reset_index(drop=True)
 
 def advise_investment(risk_return_df, principal, years, penalty, risk_column='min', n=1):
     top_results = recommend_fund(risk_return_df, years, penalty, risk_column, n)
@@ -82,7 +82,20 @@ def advise_investment_web(risk_return_df, principal, years, penalty,
             "score": round(row["score"], 4),
             "balanced_value": round(balanced, 2),
             "best_case_value": round(best_case, 2),
-            "worst_case_value": round(worst_case, 2)
+            "worst_case_value": round(worst_case, 2),
+            "sentiment_score": round(row["sentiment_score"], 4),
+            "sentiment_label": sentiment_label(row["sentiment_score"])
         })
 
     return recommendations
+def sentiment_label(score):
+    if score >= 0.15:
+        return "Very Positive"
+    elif score >= 0.05:
+        return "Positive"
+    elif score > -0.05:
+        return "Neutral"
+    elif score > -0.15:
+        return "Negative"
+    else:
+        return "Very Negative"

@@ -192,6 +192,23 @@
     <strong>⭐ Score</strong>
     <span>{{ fund.score }}</span>
 </p>
+<p class="info-row">
+    <strong>📰 Market Sentiment</strong>
+
+    <span>
+        {% if fund.sentiment_label == "Very Positive" %}
+            🟢 Very Positive
+        {% elif fund.sentiment_label == "Positive" %}
+            🟢 Positive
+        {% elif fund.sentiment_label == "Neutral" %}
+            🟡 Neutral
+        {% elif fund.sentiment_label == "Negative" %}
+            🟠 Negative
+        {% else %}
+            🔴 Very Negative
+        {% endif %}
+    </span>
+</p>
 
 <hr class="divider">
 
@@ -209,6 +226,7 @@
     <strong>📉 Conservative Estimate</strong>
     <span>₹{{ "{:,.2f}".format(fund.worst_case_value) }}</span>
 </p>
+
 
     </div>
 
