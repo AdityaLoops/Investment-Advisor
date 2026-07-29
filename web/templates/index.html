@@ -9,13 +9,20 @@
         rel="stylesheet"
         href="{{ url_for('static', filename='style.css') }}">
 </head>
-
 <body>
+    
+{% if logged_in %}
+    Logged In
+{% else %}
+    <a href="{{ url_for('login') }}">Login</a>
+    <a href="{{ url_for('register') }}">Register</a>
+{% endif %}
     <div class="version">
     Beta v1.0
 </div>
 
 <div class="hero">
+
 
     <h1>💹 Investment Advisor</h1>
 
