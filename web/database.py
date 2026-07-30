@@ -14,7 +14,9 @@ def create_table():
 
     cursor.execute("""create table if not exists search_history(id integer primary key autoincrement, user_id integer not null, 
     principal real not null, years integer not null, penalty real not null, risk_strategy text not null,
-     recommendation_count integer not null, searched_at timestamp default current_timestamp, foreign key(user_id) references users(id) )""")
+     recommendation_count integer not null, searched_at timestamp default current_timestamp, foreign key(user_id) references users(id) on delete cascade)""")
+
+    
 
     conn.commit()
     conn.close()

@@ -35,4 +35,37 @@ def verify_user(email, password):
     if check_password_hash(user['password_hash'], password):
         return user
     return None
-  
+
+def save_search(user_id, principal, years, penalty, risk_strategy, recommendation_count ):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""insert into search_history (
+    user_id,
+    principal,
+    years,
+    penalty,
+    risk_strategy,
+    recommendation_count
+    )
+    values (?, ?, ?, ?, ?, ?)"""
+                   , (user_id, principal, years, penalty, risk_strategy, recommendation_count ))
+    conn.commit()
+    conn.close()
+
+def get_user_history(user_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("select * from search_history where user_id = ? order by searched_at desc", (user_id,))
+    history = cursor.fetchall()
+    conn.close()
+    return history
+
+def get_search_by_id(search_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("select * from search_history where id = ?", (search_id,) )
+    search = cursor.fetchone()
+    conn.close()
+    return search

@@ -4,27 +4,42 @@
 <head>
     <meta charset = "UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <title>Investment Advisor</title>
     <link
         rel="stylesheet"
         href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    
-{% if logged_in %}
-    Logged In
+
+<div class="navbar">
+
+    <div class="logo">
+         Investment Advisor
+    </div>
+
+    <div class="nav-links">
+
+        {% if logged_in %}
+    <span>Welcome, {{ username }}</span>
+    <a href="{{ url_for('history') }}">History</a>
+    <a href="{{ url_for('logout') }}">Logout</a>
 {% else %}
     <a href="{{ url_for('login') }}">Login</a>
     <a href="{{ url_for('register') }}">Register</a>
 {% endif %}
-    <div class="version">
-    Beta v1.0
+
+    </div>
+
 </div>
 
 <div class="hero">
 
 
-    <h1>💹 Investment Advisor</h1>
+    <h1> Investment Advisor</h1>
 
     <p class="subtitle">
         AI-Powered Mutual Fund Recommendation Engine
@@ -36,7 +51,7 @@
     </p>
 
 </div>
-<form method="POST">
+<form action="{{ url_for('home') }}" method="POST">
     <label>Investment Amount (₹)</label><br>
 
     <input

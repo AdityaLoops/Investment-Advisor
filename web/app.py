@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect,  url_for, session
 import pandas as pd
 import sys
 import os
-from models import create_user, verify_user
+from models import create_user, verify_user, save_search, get_user_history, get_search_by_id
 from database import create_table
 
 # Add the project root to Python's search path
@@ -39,6 +39,7 @@ def home():
     n =3
 
     logged_in = "user_id" in session
+    username = session.get("username")
     if request.method == "POST":
 
 
@@ -57,7 +58,15 @@ def home():
             risk_column,
             n
         )
-
+        if "user_id" in session:
+            save_search(
+            session["user_id"],
+            principal,
+            years,
+            penalty,
+            risk_column,
+            n
+            )
     return render_template(
         "index.html",
         recommendations=recommendations,
@@ -66,7 +75,8 @@ def home():
         penalty=penalty,
         risk_column=risk_column,
         n =n,
-        logged_in = logged_in
+        logged_in = logged_in,
+        username= username
     )
 
 @app.route("/register", methods=["GET","POST"])
@@ -100,9 +110,53 @@ def login():
                 error="Wrong email or password"
             )
         session['user_id'] = user['id'] 
+        session['username'] = user['username']
         return redirect(url_for("home"))
 
     return render_template("login.html")  
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("home"))
+
+@app.route("/history")
+def history():
+    if "user_id" not in session:
+        return redirect(url_for('login'))
+    history = get_user_history(session["user_id"])
+
+    return render_template("history.html", history=history)
+
+@app.route("/rerun/<int:search_id>")
+def rerun(search_id):
+    if "user_id" not in session:
+        return redirect(url_for("login"))
+    search = get_search_by_id(search_id)
+    if search is None:
+        return redirect(url_for("history"))
+
+    if search["user_id"] != session["user_id"]:
+        return redirect(url_for("history"))
+    recommendations = advise_investment_web(
+    risk_return_df,
+    search["principal"],
+    search["years"],
+    search["penalty"],
+    search["risk_strategy"],
+    search["recommendation_count"]
+    )
+    return render_template(
+    "index.html",
+    recommendations=recommendations,
+    principal=search["principal"],
+    years=search["years"],
+    penalty=search["penalty"],
+    risk_column=search["risk_strategy"],
+    n=search["recommendation_count"],
+    logged_in=True,
+    username=session["username"]
+    )
 
 
 
