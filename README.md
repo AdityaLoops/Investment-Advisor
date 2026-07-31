@@ -278,7 +278,8 @@ Authentication includes:
 
 ### Home Page
 
-*(Add Screenshot)*
+<img width="2793" height="1567" alt="image" src="https://github.com/user-attachments/assets/83e63ac5-1592-4209-b951-e3fa596d105d" />
+
 
 ### Recommendation Results
 
