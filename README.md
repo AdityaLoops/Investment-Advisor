@@ -283,15 +283,18 @@ Authentication includes:
 
 ### Recommendation Results
 
-*(Add Screenshot)*
+<img width="2763" height="1562" alt="image" src="https://github.com/user-attachments/assets/099e46df-44f7-4a58-b72a-311988856074" />
+
 
 ### Search History
 
-*(Add Screenshot)*
+<img width="2760" height="1565" alt="image" src="https://github.com/user-attachments/assets/693a8cb5-879a-4e99-8637-da67a88da452" />
+
 
 ### Login
 
-*(Add Screenshot)*
+<img width="2795" height="1569" alt="image" src="https://github.com/user-attachments/assets/95c5622c-61a4-479a-a2ef-32bd1fd5e195" />
+
 
 ---
 
