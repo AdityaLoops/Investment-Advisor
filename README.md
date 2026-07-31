@@ -10,6 +10,37 @@ This is **not** a stock/price predictor. It does not attempt to forecast future 
 
 > **A note on "expected" figures:** all CAGR/return figures in this tool are computed from real historical NAV data. They describe what actually happened in the past, not a forecast of the future. Past performance is not indicative of future returns — this is true of any tool like this, not a caveat specific to this project.
 
+## ✨ Web Application Features
+
+### 🔐 User Authentication
+
+- User Registration
+- Secure Login & Logout
+- Password Hashing using Werkzeug
+- Session-based Authentication
+- Protected Routes
+
+### 📜 Search History
+
+- Automatically saves every investment search
+- View previous searches
+- One-click **Run Again** functionality
+- Users can only access their own search history
+
+### 🤖 Recommendation Engine
+
+- AI-powered mutual fund recommendations
+- Historical & AI-predicted risk estimation
+- Adjustable risk tolerance
+- Configurable number of recommendations
+- Balanced / Best-case / Conservative projections
+
+### 🎨 User Interface
+
+- Modern dark-themed interface
+- Responsive recommendation cards
+- Improved navigation
+
 ---
 
 ## Project Structure
@@ -40,12 +71,17 @@ investment_advisor_project/
 │   └── calculators.py     # compound_interest(), recommend_best(), recommend_fund(),
 │                           # advise_investment(), advise_investment_web()
 └── web/
-    ├── app.py             # Flask app
-    ├── requirements.txt
+    ├── app.py
+    ├── database.py
+    ├── models.py
     ├── templates/
-    │   └── index.html
-    └── static/
-        └── style.css
+    │   ├── index.html
+    │   ├── login.html
+    │   ├── register.html
+    │   └── history.html
+    ├── static/
+    │   └── style.css
+    └── requirements.txt
 ```
 
 ---
@@ -191,13 +227,70 @@ In the filtered (post-2018-history) dataset, most funds' worst-case (`min`) CAGR
 
 ## Web Application
 
-A Flask web app (`web/`) wraps `advise_investment_web()` for interactive use — form inputs for principal, horizon, risk penalty, risk measure (historical vs. AI-predicted), and number of recommendations.
+The project includes a Flask web application that allows users to:
+
+- Register an account
+- Securely log in
+- Generate personalized investment recommendations
+- Save searches automatically
+- View previous investment searches
+- Instantly rerun previous recommendations
+- Choose between historical and AI-predicted risk estimation
+- Select the number of recommendations returned
+
+The application uses SQLite for authentication and persistent search history while loading the recommendation dataset into memory during startup for fast inference.
 
 **Live at:** https://investment-advisor-d89n.onrender.com/
 
-Deployed on Render's free tier. The app loads `risk_return_df_138funds_filtered_min7yr.csv` — the final, filtered, fully-validated dataset — once at startup.
+Deployed on Render's free tier.
 
 **Labeling note:** the UI distinguishes between historically-derived figures (real past averages/worst-cases — no ML involved) and the genuinely AI-predicted figure (`predicted_min_cagr`, from the quantile regression model), since conflating the two would misrepresent which numbers are actually model output versus plain arithmetic on historical data.
+
+---
+
+## Database
+
+SQLite is used for lightweight persistent storage.
+
+The application stores:
+
+- Registered users
+- Secure password hashes
+- Search history
+- Investment parameters required to rerun previous recommendations
+
+The database is automatically created on first launch.
+
+---
+
+## Authentication
+
+Authentication includes:
+
+- Password hashing using Werkzeug
+- Flask session management
+- Protected routes
+- Authorization checks preventing users from accessing another user's search history
+
+---
+
+## Screenshots
+
+### Home Page
+
+*(Add Screenshot)*
+
+### Recommendation Results
+
+*(Add Screenshot)*
+
+### Search History
+
+*(Add Screenshot)*
+
+### Login
+
+*(Add Screenshot)*
 
 ---
 
@@ -233,3 +326,7 @@ Deployed on Render's free tier. The app loads `risk_return_df_138funds_filtered_
 - **Naive-average baseline in the output** — surface the `penalty=0` (pure historical average, no risk adjustment) pick alongside the risk-adjusted recommendation, for direct comparison
 - **Purge gap in the train/test split** — eliminate residual boundary leakage between overlapping windows once there's enough data to afford the loss
 - **Benchmark comparison in the UI** — show a recommended fund's historical CAGR next to a reference point (e.g. "broad equity mutual funds have historically averaged 12–15% CAGR") so users can immediately see when a pick is an exceptional historical performer rather than a typical one
+- **Email OTP Verification**
+- **Password Reset**
+- **User Dashboard**
+- **Favorite Searches**
